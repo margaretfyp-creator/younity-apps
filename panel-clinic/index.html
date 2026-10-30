@@ -84,7 +84,11 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .tag{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px;background:var(--pill);color:var(--ink);margin:2px 4px 2px 0}
 .tag.ok{background:var(--okbg);color:var(--ok)}
 .tag.w{background:var(--warnbg);color:var(--warn)}
-.acts{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.acts{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
+#dirDlg h3{margin:0 0 2px;font-size:16px;overflow-wrap:anywhere}
+#dirDlg .apps{display:grid;gap:8px;margin:12px 0 8px}
+#dirDlg .apps .btn{justify-content:flex-start;padding:13px 14px;font-size:15px}
+#dirDlg .apps .btn b{font-size:18px;width:26px;text-align:center}
 .acts .btn{padding:9px 6px;font-size:13.5px}
 .mini{font:600 12px var(--f-body);padding:3px 8px;border-radius:7px}
 details.sp summary{cursor:pointer;font-weight:600;font-size:13.5px;color:var(--link)}
@@ -177,6 +181,15 @@ dialog pre{white-space:pre-wrap;font:13px/1.45 var(--f-body);background:var(--bg
   </footer>
 </main>
 
+<dialog id="dirDlg" aria-labelledby="dirName">
+  <h3 id="dirName"></h3>
+  <p class="muted" id="dirPick" style="margin:0"></p>
+  <div class="apps">
+    <a class="btn primary" id="dirGoogle" target="_blank" rel="noopener"><b>🗺️</b> Google Maps</a>
+    <a class="btn" id="dirWaze" target="_blank" rel="noopener"><b>🚗</b> Waze</a>
+  </div>
+  <div class="row" style="justify-content:flex-end"><button id="dirCancel"></button></div>
+</dialog>
 <dialog id="dlg">
   <h3 id="dT" style="margin:0 0 6px;font-size:16px"></h3>
   <p class="muted" id="dS" style="margin:0 0 8px"></p>
@@ -376,7 +389,7 @@ const S = {
     types:{R:'Resident (full-time)',V:'Visiting (part-time)',S:'Sessional'}, dutyNote:'Doctors listed by Great Eastern. Call to check who is on duty today.',
     noSpec:'Specialist list not available for this hospital.',
     elsewhere:(q, w)=>`“${q}” is also in ${w.join(', ')}. For a different one, add the town, e.g. “${q}, ${w[0]}”.`,
-    maps:'Directions', waze:'Waze', call:'Call', copy:'Copy no.', copied:'Copied',
+    maps:'Directions', waze:'Waze', call:'Call', pickApp:'Open directions in:', cancel:'Cancel', copy:'Copy no.', copied:'Copied',
     more:'Show more', none:q=>`Couldn't find “${q}”. Try a 5-digit postcode, or a bigger town nearby (for example Butterworth or Ipoh).`,
     nopc:pc=>`Postcode ${pc} isn't in our map data yet. Showing clinics that list ${pc} in their address.`,
     noLoc:'Your location isn\'t available here. Type your postcode instead.', openNow:t=>`Open now · until ${t}`, closedNow:t=>t?`Closed now · opens ${t}`:'Closed today',
@@ -398,7 +411,7 @@ const S = {
     types:{R:'驻院（全职）',V:'访问（兼职）',S:'按时段出诊'}, dutyNote:'医生名单来自 Great Eastern。当天值班的医生，请先致电确认。',
     noSpec:'这间医院暂时没有专科医生名单。',
     elsewhere:(q, w)=>`“${q}”在 ${w.join('、')} 也有。要查其他地点，请加上城镇名，例如“${q}, ${w[0]}”。`,
-    maps:'导航', waze:'Waze', call:'致电', copy:'复制号码', copied:'已复制',
+    maps:'导航', waze:'Waze', call:'致电', pickApp:'选择导航应用：', cancel:'取消', copy:'复制号码', copied:'已复制',
     more:'显示更多', none:q=>`找不到“${q}”。请输入5位数邮编，或附近较大的城镇（例如 Butterworth 或 Ipoh）。`,
     nopc:pc=>`地图资料暂时没有邮编 ${pc}，以下显示地址中有 ${pc} 的诊所。`,
     noLoc:'这里无法使用您的位置，请输入邮编。', openNow:t=>`营业中 · 至 ${t}`, closedNow:t=>t?`休息中 · ${t} 开门`:'今天休息',
@@ -623,11 +636,22 @@ function render(){
     <div class="list" style="margin-top:10px">${list.map((x, i) => card(x, i)).join('')}</div>
     ${ranked.length > shown ? `<div style="text-align:center;margin-top:10px"><button id="more">${t('more')}</button></div>` : ''}`;
   el.querySelectorAll('[data-copy]').forEach(b => b.onclick = () => copyText(b.dataset.copy));
+  el.querySelectorAll('[data-dir]').forEach(b => b.onclick = () => openDirections(list[+b.dataset.dir].r));
   el.querySelectorAll('.pick input').forEach(cb => cb.onchange = () => { const r = list[+cb.dataset.i].r; cb.checked ? chosen.add(r) : chosen.delete(r); cb.closest('.clinic').classList.toggle('sel', cb.checked); buildMessage(); });
   if ($('more')) $('more').onclick = () => { shown += 15; render(); };
   $('compose').hidden = !agent;
   if (agent) buildMessage();
 }
+// one Directions button per card; the client picks the map app here
+function openDirections(r){
+  const d = $('dirDlg');
+  $('dirName').textContent = r.name; $('dirPick').textContent = t('pickApp'); $('dirCancel').textContent = t('cancel');
+  $('dirGoogle').href = mapsUrl(r); $('dirWaze').href = wazeUrl(r);
+  d.showModal();
+}
+$('dirGoogle').onclick = $('dirWaze').onclick = () => setTimeout(() => $('dirDlg').close(), 50);
+$('dirCancel').onclick = () => $('dirDlg').close();
+$('dirDlg').addEventListener('click', e => { if (e.target === $('dirDlg')) $('dirDlg').close(); }); // tap outside to close
 function card(x, i){
   const r = x.r, L = S[lang];
   const dist = x.d != null ? `<span class="dist">${x.on ? esc(L.onStreet) : esc(L.km(x.d))}</span>` : '';
@@ -653,8 +677,7 @@ function card(x, i){
     <div class="top"><div class="nm">${esc(r.name)}</div>${dist}</div>
     <dl class="dl">${rows.join('')}</dl>
     <div class="acts">
-      <a class="btn primary" href="${mapsUrl(r)}" target="_blank" rel="noopener">${L.maps}</a>
-      <a class="btn" href="${wazeUrl(r)}" target="_blank" rel="noopener">${L.waze}</a>
+      <button class="btn primary" data-dir="${i}">${L.maps}</button>
       ${ph[0] ? `<a class="btn" href="tel:${ph[0].replace(/[^\d+]/g, '')}">${L.call}</a>` : '<span></span>'}
     </div>
     ${agent ? `<label class="pick"><input type="checkbox" data-i="${i}" ${chosen.has(r) ? 'checked' : ''}> Include in message</label>` : ''}

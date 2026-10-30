@@ -1,5 +1,5 @@
 // Offline support: the app page is fetched fresh when online (so updates arrive) and served from cache when offline.
-const PREFIX = 'panel-clinic-', CACHE = PREFIX + '202610300225'; // both apps share one site, so each only clears its own caches
+const PREFIX = 'panel-clinic-', CACHE = PREFIX + '202610300333'; // both apps share one site, so each only clears its own caches
 const SHELL = ["./","manifest.webmanifest","icon-192.png","icon-512.png","apple-touch-icon.png"];
 const CDN = ["https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"];
 self.addEventListener('install', e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL).then(() => Promise.all(CDN.map(u => fetch(u, {mode: 'no-cors'}).then(r => c.put(u, r)).catch(() => {})))))).then(() => self.skipWaiting()));

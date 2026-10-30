@@ -1,5 +1,5 @@
 // Offline support: the app page is fetched fresh when online (so updates arrive) and served from cache when offline.
-const PREFIX = 'form-autofill-', CACHE = PREFIX + '202610300225'; // both apps share one site, so each only clears its own caches
+const PREFIX = 'form-autofill-', CACHE = PREFIX + '202610300333'; // both apps share one site, so each only clears its own caches
 const SHELL = ["./","manifest.webmanifest","icon-192.png","icon-512.png","apple-touch-icon.png"];
 const CDN = ["https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js","https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js","https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js","https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js","https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"];
 self.addEventListener('install', e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL).then(() => Promise.all(CDN.map(u => fetch(u, {mode: 'no-cors'}).then(r => c.put(u, r)).catch(() => {})))))).then(() => self.skipWaiting()));
