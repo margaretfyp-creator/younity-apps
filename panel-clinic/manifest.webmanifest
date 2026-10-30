@@ -1,0 +1,32 @@
+{
+  "name": "Panel Clinic Finder",
+  "short_name": "Panel Clinic",
+  "description": "Nearest Great Eastern panel clinics and hospitals with services, doctors, hours and directions, in English and Mandarin.",
+  "lang": "en",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f2f6f5",
+  "theme_color": "#0e6e6b",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

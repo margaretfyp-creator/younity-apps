@@ -1,0 +1,568 @@
+<!doctype html>
+<html lang="en">
+<head>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Form Fill">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#c8102e">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Form Auto-Fill</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --bg:#f5f6f8; --panel:#ffffff; --ink:#1b1f24; --muted:#5f6b7a; --line:#dde1e6;
+  --accent:#c8102e; --accent-ink:#ffffff; --soft:#fbeaec; --mark:rgba(200,16,46,.10); --mark-line:#c8102e;
+  --ok:#1f7a3f;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#121417; --panel:#1b1e23; --ink:#e8eaed; --muted:#9aa4b1; --line:#2e333a;
+    --accent:#ff4d64; --accent-ink:#16181b; --soft:#3a1e23; --mark:rgba(255,77,100,.16); --mark-line:#ff4d64; --ok:#5ccf87;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#121417; --panel:#1b1e23; --ink:#e8eaed; --muted:#9aa4b1; --line:#2e333a;
+  --accent:#ff4d64; --accent-ink:#16181b; --soft:#3a1e23; --mark:rgba(255,77,100,.16); --mark-line:#ff4d64; --ok:#5ccf87;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{display:flex;align-items:center;gap:12px;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel)}
+header h1{font-size:17px;margin:0}
+header .sub{color:var(--muted);font-size:13px}
+.layout{display:grid;grid-template-columns:minmax(340px,430px) 1fr;gap:16px;padding:16px;align-items:start}
+@media (max-width:900px){.layout{grid-template-columns:1fr;padding:12px 16px}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:14px}
+.card h2{font-size:14px;margin:0 0 10px;display:flex;align-items:center;gap:8px}
+.step{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--accent);color:var(--accent-ink);font-size:12px;font-weight:700}
+.muted{color:var(--muted);font-size:12.5px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.row+.row{margin-top:8px}
+button,.btn{font:inherit;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:6px 11px;border-radius:7px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+button:hover,.btn:hover{border-color:var(--muted)}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+button.danger{color:var(--accent)}
+button:disabled{opacity:.45;cursor:not-allowed}
+input[type=text],input[type=number],select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:5px 7px;min-width:0}
+input[type=number]{width:64px}
+input[type=file]{display:none}
+label.chk{display:inline-flex;gap:6px;align-items:center;font-size:13px}
+.table-wrap{max-height:330px;overflow:auto;border:1px solid var(--line);border-radius:8px;margin-top:10px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{border-bottom:1px solid var(--line);padding:4px 6px;text-align:left;white-space:nowrap}
+th{position:sticky;top:0;background:var(--panel);font-weight:600;font-size:12px;color:var(--muted);z-index:1}
+td input[type=text]{width:100%;min-width:90px;padding:3px 5px;background:transparent;border-color:transparent}
+td input[type=text]:focus{border-color:var(--line);background:var(--bg)}
+tr.cur td{background:var(--soft)}
+.plist .pl{display:grid;grid-template-columns:1fr auto auto auto auto;gap:6px;align-items:center;padding:6px;border:1px solid var(--line);border-radius:7px;margin-top:6px}
+.plist .pl.sel{border-color:var(--mark-line);background:var(--soft)}
+.plist .pl small{color:var(--muted);font-size:11px;display:block}
+.plist .pl input[type=number]{width:54px}
+.main{position:sticky;top:12px}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.toolbar .spacer{flex:1}
+.stage{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;overflow:auto;max-height:calc(100vh - 140px)}
+.pagebox{position:relative;margin:0 auto;box-shadow:0 1px 6px rgba(0,0,0,.18);background:#fff}
+.pagebox canvas{display:block}
+.overlay{position:absolute;inset:0}
+.overlay.armed{cursor:crosshair;outline:2px dashed var(--mark-line);outline-offset:-2px}
+.marker{position:absolute;white-space:pre;line-height:1;color:#0b3d91;font-family:Helvetica,Arial,sans-serif;background:var(--mark);outline:1px dashed var(--mark-line);cursor:move;user-select:none;touch-action:none}
+.marker.sel{outline:2px solid var(--mark-line)}
+.marker .ch{position:absolute;top:0}
+.empty{display:grid;place-items:center;text-align:center;min-height:420px;color:var(--muted);padding:20px}
+.banner{padding:8px 10px;border-radius:7px;background:var(--soft);font-size:13px;margin-top:8px}
+.status{font-size:12.5px;color:var(--ok);min-height:18px}
+.acro{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;max-height:240px;overflow:auto}
+.acro div{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;align-self:center}
+details summary{cursor:pointer;color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Form Auto-Fill</h1>
+    <div class="sub">Load the blank form, set where each detail goes, add customers, then export the filled PDFs. Everything runs in this browser and nothing is uploaded.</div>
+  </div>
+</header>
+
+<div class="layout">
+  <aside>
+    <section class="card">
+      <h2><span class="step">1</span> Blank form</h2>
+      <div class="row">
+        <label class="btn primary" style="background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600">Load blank PDF<input type="file" id="pdfIn" accept="application/pdf"></label>
+        <span id="pdfName" class="muted">No form loaded</span>
+      </div>
+      <div id="acroBox" hidden>
+        <div class="banner">This PDF has built-in fillable fields. Pick which customer detail goes into each one. You can also place text anywhere in step 3.</div>
+        <div class="acro" id="acroMap"></div>
+        <div class="row" style="margin-top:6px"><label class="chk"><input type="checkbox" id="flatten" checked> Flatten fields (filled form can't be edited)</label></div>
+      </div>
+      <details style="margin-top:10px">
+        <summary>Share or restore the setup</summary>
+        <div class="row" style="margin-top:8px">
+          <button id="cfgOut">Save setup file</button>
+          <label class="btn">Load setup file<input type="file" id="cfgIn" accept="application/json,.json"></label>
+        </div>
+        <div class="muted" style="margin-top:6px">The setup file has the blank form and field positions but no customer data, so teammates can use the same layout.</div>
+      </details>
+    </section>
+
+    <section class="card">
+      <h2><span class="step">2</span> Customers</h2>
+      <div class="row">
+        <input type="text" id="addName" placeholder="Name" style="flex:2 1 120px">
+        <input type="text" id="addIc" placeholder="IC no." style="flex:1 1 110px">
+        <input type="text" id="addPol" placeholder="Policy no." style="flex:1 1 110px">
+        <button id="addBtn" class="primary">Add</button>
+      </div>
+      <div class="row">
+        <label class="btn">Bulk upload (Excel / CSV)<input type="file" id="bulkIn" accept=".csv,.xlsx,.xls,text/csv"></label>
+        <button id="tplBtn">Download template</button>
+        <button id="clearBtn" class="danger">Clear all</button>
+      </div>
+      <div class="row muted">Recognised columns are Name, IC / NRIC and Policy No. Any other column (e.g. Agent Code, Phone) is also kept and can be placed on the form.</div>
+      <div class="row"><label class="chk"><input type="checkbox" id="remember"> Remember customers on this computer</label></div>
+      <div class="table-wrap"><table id="custTable"></table></div>
+      <div id="custCount" class="muted" style="margin-top:6px"></div>
+    </section>
+
+    <section class="card">
+      <h2><span class="step">3</span> Field positions</h2>
+      <div class="row">
+        <select id="placeKey" style="flex:1"></select>
+        <button id="placeBtn" class="primary">Place on form</button>
+      </div>
+      <div class="muted" style="margin-top:6px">Click <b>Place on form</b>, then click the start of the blank on the preview. You can drag markers to adjust them, or select one and use the arrow keys (hold Shift for bigger steps). For boxed fields such as IC, set <b>Box</b> to the width of one box so each character lands in its own box.</div>
+      <div class="row" style="margin-top:8px">
+        <label class="chk"><input type="checkbox" id="upper" checked> CAPITAL LETTERS</label>
+        <label class="chk">IC format
+          <select id="icFmt"><option value="asis">As entered</option><option value="dash">840403-10-5360</option><option value="digits">840403105360</option></select>
+        </label>
+      </div>
+      <div class="plist" id="plist"></div>
+    </section>
+  </aside>
+
+  <main class="main">
+    <div class="toolbar">
+      <button id="prevPg">‹</button><span id="pgLbl" class="muted">Page –</span><button id="nextPg">›</button>
+      <span class="muted" style="margin-left:8px">Preview:</span>
+      <select id="curSel" style="max-width:220px"></select>
+      <span class="spacer"></span>
+      <button id="expOne" class="primary">Export this PDF</button>
+      <button id="expMerged">Export all, one PDF</button>
+      <button id="expZip">Export all, ZIP</button>
+    </div>
+    <div class="status" id="status"></div>
+    <div class="stage" id="stage">
+      <div class="empty" id="empty"><div><b>Load the blank form to begin</b><br>Use “Load blank PDF” in step 1.</div></div>
+      <div class="pagebox" id="pagebox" hidden>
+        <canvas id="cv"></canvas>
+        <div class="overlay" id="overlay"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+const LS_T = 'formfill.template.v1', LS_C = 'formfill.customers.v1', LS_R = 'formfill.remember.v1';
+const BASE_COLS = [{key:'name',label:'Name'},{key:'ic',label:'IC No.'},{key:'policy_no',label:'Policy No.'}];
+const DERIVED = [{key:'dob',label:'Date of birth (from IC)'},{key:'gender',label:'Gender (from IC)'},{key:'age',label:'Age (from IC)'},{key:'today',label:"Today's date"}];
+const ALIASES = {
+  name:['name','customer_name','customer','full_name','client_name','client','life_assured','policyholder','policy_holder','policy_owner','owner_name','nama'],
+  ic:['ic','ic_no','ic_number','nric','nric_no','nric_number','mykad','new_ic','new_ic_no','id_no','identity_no','no_kp'],
+  policy_no:['policy_no','policy_number','policy','policyno','policy_num','no_polisi','contract_no','certificate_no']
+};
+const SAMPLE = {name:'Sample Customer', ic:'000000-00-0000', policy_no:'0000000000'};
+
+let state = {pdfB64:null, fileName:'', placements:[], acroMap:{}, flatten:true, upper:true, icFmt:'asis', extraCols:[]};
+let pdfBytes = null, customers = [], current = 0, pdfJsDoc = null, pageNum = 1, viewport = null, scale = 1;
+let armed = null, selectedId = null, acroFields = [], renderTask = null, measureFont = null;
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const status = (msg, err) => { const s = $('status'); s.textContent = msg || ''; s.style.color = err ? 'var(--accent)' : 'var(--ok)'; };
+
+// ---------- storage ----------
+function lsGet(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
+function lsSet(k,v){ try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k,v); return true; } catch(e){ return false; } }
+function saveTemplate(){ if (!lsSet(LS_T, JSON.stringify(state))) status('Setup could not be saved in this browser. Use “Save setup file” to keep it.', true); }
+function saveCustomers(){ lsSet(LS_C, $('remember').checked ? JSON.stringify(customers) : null); }
+
+function toB64(bytes){ let s=''; const c=0x8000; for (let i=0;i<bytes.length;i+=c) s += String.fromCharCode.apply(null, bytes.subarray(i,i+c)); return btoa(s); }
+function fromB64(b){ const s=atob(b); const u=new Uint8Array(s.length); for (let i=0;i<s.length;i++) u[i]=s.charCodeAt(i); return u; }
+
+// ---------- columns & values ----------
+function normKey(h){ return String(h).trim().toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,''); }
+function mapHeader(h){ const k = normKey(h); for (const [key,list] of Object.entries(ALIASES)) if (list.includes(k)) return key; return k; }
+function dataCols(){ return [...BASE_COLS, ...state.extraCols.map(k => ({key:k, label:k.replace(/_/g,' ')}))]; }
+function allCols(){ return [...dataCols(), ...DERIVED]; }
+
+function parseIC(ic){
+  const d = String(ic||'').replace(/\D/g,'');
+  if (d.length !== 12) return null;
+  const yy = +d.slice(0,2), mm = +d.slice(2,4), dd = +d.slice(4,6);
+  if (mm<1||mm>12||dd<1||dd>31) return null;
+  const nowYY = new Date().getFullYear() % 100;
+  const year = (yy > nowYY ? 1900 : 2000) + yy;
+  const now = new Date(); let age = now.getFullYear() - year;
+  if (now.getMonth()+1 < mm || (now.getMonth()+1 === mm && now.getDate() < dd)) age--;
+  return {dob:`${String(dd).padStart(2,'0')}/${String(mm).padStart(2,'0')}/${year}`, gender: (+d[11]) % 2 ? 'Male' : 'Female', age:String(age), digits:d};
+}
+function fmtIC(ic){
+  const d = String(ic||'').replace(/\D/g,'');
+  if (state.icFmt === 'asis' || d.length !== 12) return String(ic||'');
+  return state.icFmt === 'digits' ? d : `${d.slice(0,6)}-${d.slice(6,8)}-${d.slice(8)}`;
+}
+function val(c, key){
+  let v;
+  if (key === 'today'){ const t=new Date(); v = `${String(t.getDate()).padStart(2,'0')}/${String(t.getMonth()+1).padStart(2,'0')}/${t.getFullYear()}`; }
+  else if (key === 'dob' || key === 'gender' || key === 'age'){ const p = parseIC(c.ic); v = p ? p[key] : ''; }
+  else if (key === 'ic') v = fmtIC(c.ic);
+  else v = c[key] ?? '';
+  v = String(v).trim();
+  return state.upper ? v.toUpperCase() : v;
+}
+function previewCustomer(){ return customers[current] || SAMPLE; }
+
+// ---------- template ----------
+async function getMeasureFont(){
+  if (!measureFont){ const d = await PDFLib.PDFDocument.create(); measureFont = await d.embedFont(PDFLib.StandardFonts.Helvetica); }
+  return measureFont;
+}
+async function loadTemplate(bytes, name){
+  pdfBytes = bytes;
+  state.pdfB64 = toB64(bytes); state.fileName = name || state.fileName;
+  pdfJsDoc = await pdfjsLib.getDocument({data: bytes.slice()}).promise;
+  pageNum = Math.min(pageNum, pdfJsDoc.numPages) || 1;
+  try {
+    const d = await PDFLib.PDFDocument.load(bytes, {ignoreEncryption:true});
+    acroFields = d.getForm().getFields().map(f => ({name:f.getName(), kind: f instanceof PDFLib.PDFTextField ? 'text' : f instanceof PDFLib.PDFCheckBox ? 'check' : 'other'}));
+  } catch(e){ acroFields = []; }
+  for (const f of acroFields) if (!(f.name in state.acroMap)){ const k = mapHeader(f.name); state.acroMap[f.name] = allCols().some(c=>c.key===k) ? k : ''; }
+  $('pdfName').textContent = `${state.fileName} · ${pdfJsDoc.numPages} page${pdfJsDoc.numPages>1?'s':''}`;
+  $('empty').hidden = true; $('pagebox').hidden = false;
+  saveTemplate(); renderAcro(); await renderPage();
+}
+function renderAcro(){
+  const box = $('acroBox'), el = $('acroMap');
+  const text = acroFields.filter(f => f.kind !== 'other');
+  box.hidden = !text.length; if (!text.length) return;
+  const opts = sel => `<option value="">— leave blank —</option>` + allCols().map(c => `<option value="${c.key}" ${c.key===sel?'selected':''}>${esc(c.label)}</option>`).join('');
+  el.innerHTML = text.map(f => `<div title="${esc(f.name)}">${esc(f.name)}${f.kind==='check'?' ☐':''}</div><select data-f="${esc(f.name)}">${opts(state.acroMap[f.name])}</select>`).join('');
+  el.querySelectorAll('select').forEach(s => s.onchange = () => { state.acroMap[s.dataset.f] = s.value; saveTemplate(); });
+  $('flatten').checked = state.flatten;
+}
+
+// ---------- preview ----------
+async function renderPage(){
+  if (!pdfJsDoc) return;
+  const page = await pdfJsDoc.getPage(pageNum);
+  const base = page.getViewport({scale:1});
+  const avail = $('stage').clientWidth - 26;
+  scale = Math.max(0.5, Math.min(2, avail / base.width));
+  viewport = page.getViewport({scale});
+  const dpr = window.devicePixelRatio || 1, cv = $('cv');
+  cv.width = Math.floor(viewport.width*dpr); cv.height = Math.floor(viewport.height*dpr);
+  cv.style.width = viewport.width+'px'; cv.style.height = viewport.height+'px';
+  $('pagebox').style.width = viewport.width+'px'; $('pagebox').style.height = viewport.height+'px';
+  if (renderTask) { try { renderTask.cancel(); } catch(e){} }
+  renderTask = page.render({canvasContext: cv.getContext('2d'), viewport: page.getViewport({scale: scale*dpr})});
+  try { await renderTask.promise; } catch(e){ if (e && e.name === 'RenderingCancelledException') return; throw e; }
+  $('pgLbl').textContent = `Page ${pageNum} / ${pdfJsDoc.numPages}`;
+  await drawMarkers();
+}
+let drawGen = 0;
+async function drawMarkers(){
+  const gen = ++drawGen;
+  const ov = $('overlay');
+  ov.classList.toggle('armed', !!armed);
+  if (!viewport) { ov.innerHTML = ''; return; }
+  const font = await getMeasureFont(), c = previewCustomer();
+  if (gen !== drawGen) return; // a newer redraw superseded this one
+  ov.innerHTML = '';
+  for (const p of state.placements.filter(p => p.page === pageNum)){
+    const text = safeText(font, val(c, p.key)) || `[${labelOf(p.key)}]`;
+    const [vx, vy] = viewport.convertToViewportPoint(p.x, p.y);
+    const px = p.size*scale;
+    const m = document.createElement('div');
+    m.className = 'marker' + (p.id === selectedId ? ' sel' : '');
+    m.style.fontSize = px+'px'; m.style.left = vx+'px'; m.style.top = (vy - px*0.8)+'px';
+    if (p.pitch > 0){
+      m.style.height = px+'px'; m.style.width = (text.length*p.pitch*scale)+'px';
+      [...text].forEach((ch,i) => { const s = document.createElement('span'); s.className='ch'; s.textContent = ch;
+        s.style.left = ((i*p.pitch + (p.pitch - font.widthOfTextAtSize(ch, p.size))/2)*scale)+'px'; m.appendChild(s); });
+    } else m.textContent = text;
+    m.dataset.id = p.id;
+    attachDrag(m, p);
+    ov.appendChild(m);
+  }
+}
+function attachDrag(m, p){
+  m.addEventListener('pointerdown', e => {
+    if (armed) return;
+    e.preventDefault(); e.stopPropagation(); m.setPointerCapture(e.pointerId);
+    selectedId = p.id; document.querySelectorAll('.marker').forEach(x => x.classList.toggle('sel', x === m)); renderPlist();
+    const sx = e.clientX, sy = e.clientY, ol = parseFloat(m.style.left), ot = parseFloat(m.style.top);
+    let moved = false;
+    const mv = ev => { moved = true; m.style.left = (ol + ev.clientX - sx)+'px'; m.style.top = (ot + ev.clientY - sy)+'px'; };
+    const up = ev => {
+      m.removeEventListener('pointermove', mv); m.removeEventListener('pointerup', up);
+      if (!moved) return;
+      const [x, y] = viewport.convertToPdfPoint(ol + ev.clientX - sx, ot + ev.clientY - sy + p.size*scale*0.8);
+      p.x = round(x); p.y = round(y); saveTemplate(); renderPlist(); drawMarkers();
+    };
+    m.addEventListener('pointermove', mv); m.addEventListener('pointerup', up);
+  });
+}
+const round = n => Math.round(n*10)/10;
+const labelOf = k => (allCols().find(c => c.key === k) || {label:k}).label;
+
+$('overlay').addEventListener('click', e => {
+  if (!armed || !viewport) return;
+  const r = $('overlay').getBoundingClientRect();
+  const [x, y] = viewport.convertToPdfPoint(e.clientX - r.left, e.clientY - r.top);
+  const p = {id: 'p'+Date.now().toString(36), key: armed, page: pageNum, x: round(x), y: round(y), size: 10, pitch: 0};
+  state.placements.push(p); selectedId = p.id; armed = null;
+  $('placeBtn').textContent = 'Place on form';
+  saveTemplate(); renderPlist(); drawMarkers();
+  status(`Placed “${labelOf(p.key)}”. Drag it or use the arrow keys to fine-tune.`);
+});
+document.addEventListener('keydown', e => {
+  if (!selectedId || /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
+  const p = state.placements.find(p => p.id === selectedId); if (!p) return;
+  const step = e.shiftKey ? 5 : 0.5;
+  const d = {ArrowLeft:[-step,0], ArrowRight:[step,0], ArrowUp:[0,step], ArrowDown:[0,-step]}[e.key];
+  if (e.key === 'Escape'){ armed = null; $('placeBtn').textContent = 'Place on form'; drawMarkers(); return; }
+  if (!d) return;
+  e.preventDefault(); p.x = round(p.x + d[0]); p.y = round(p.y + d[1]); saveTemplate(); renderPlist(); drawMarkers();
+});
+
+// ---------- placements list ----------
+function renderPlaceKey(){
+  $('placeKey').innerHTML = allCols().map(c => `<option value="${c.key}">${esc(c.label)}</option>`).join('');
+}
+function renderPlist(){
+  const el = $('plist');
+  if (!state.placements.length){ el.innerHTML = '<div class="muted" style="margin-top:8px">No fields placed yet.</div>'; return; }
+  const opts = sel => allCols().map(c => `<option value="${c.key}" ${c.key===sel?'selected':''}>${esc(c.label)}</option>`).join('');
+  el.innerHTML = state.placements.map(p => `
+    <div class="pl ${p.id===selectedId?'sel':''}" data-id="${p.id}">
+      <div><select data-k="key" style="width:100%">${opts(p.key)}</select><small>Page ${p.page} · x ${p.x}, y ${p.y}</small></div>
+      <label class="muted">Size<br><input type="number" data-k="size" min="4" max="40" step="0.5" value="${p.size}"></label>
+      <label class="muted">Box<br><input type="number" data-k="pitch" min="0" max="60" step="0.1" value="${p.pitch}"></label>
+      <button data-act="go" title="Show this page">↗</button>
+      <button data-act="del" class="danger" title="Remove">✕</button>
+    </div>`).join('');
+  el.querySelectorAll('.pl').forEach(row => {
+    const p = state.placements.find(p => p.id === row.dataset.id);
+    row.querySelectorAll('[data-k]').forEach(inp => inp.onchange = () => {
+      p[inp.dataset.k] = inp.dataset.k === 'key' ? inp.value : Math.max(0, parseFloat(inp.value) || 0);
+      if (p.size < 4) p.size = 4;
+      saveTemplate(); drawMarkers();
+    });
+    row.querySelector('[data-act=del]').onclick = () => { state.placements = state.placements.filter(x => x !== p); saveTemplate(); renderPlist(); drawMarkers(); };
+    row.querySelector('[data-act=go]').onclick = () => { selectedId = p.id; pageNum = p.page; renderPlist(); renderPage(); };
+  });
+}
+
+// ---------- customers ----------
+function renderCustomers(){
+  const cols = dataCols();
+  const t = $('custTable');
+  if (!customers.length){ t.innerHTML = `<tr><td class="muted" style="padding:12px">No customers yet. Add one above or bulk upload a file.</td></tr>`; }
+  else {
+    t.innerHTML = `<thead><tr><th></th><th>#</th>${cols.map(c=>`<th>${esc(c.label)}</th>`).join('')}<th></th></tr></thead><tbody>` +
+      customers.map((c,i) => `<tr class="${i===current?'cur':''}" data-i="${i}">
+        <td><input type="radio" name="cur" ${i===current?'checked':''} title="Preview this customer"></td><td class="muted">${i+1}</td>
+        ${cols.map(col => `<td><input type="text" data-k="${col.key}" value="${esc(c[col.key])}"></td>`).join('')}
+        <td><button class="danger" data-del title="Remove">✕</button></td></tr>`).join('') + '</tbody>';
+    t.querySelectorAll('tbody tr').forEach(tr => {
+      const i = +tr.dataset.i;
+      tr.querySelector('input[type=radio]').onchange = () => setCurrent(i);
+      tr.querySelectorAll('input[data-k]').forEach(inp => {
+        inp.oninput = () => { customers[i][inp.dataset.k] = inp.value; saveCustomers(); if (i === current) { drawMarkers(); renderCurSel(); } };
+        inp.onfocus = () => { if (i !== current) setCurrent(i, true); };
+      });
+      tr.querySelector('[data-del]').onclick = () => { customers.splice(i,1); if (current >= customers.length) current = Math.max(0, customers.length-1); saveCustomers(); refreshAll(); };
+    });
+  }
+  $('custCount').textContent = customers.length ? `${customers.length} customer${customers.length>1?'s':''}` : '';
+  renderCurSel();
+}
+function renderCurSel(){
+  $('curSel').innerHTML = customers.length
+    ? customers.map((c,i) => `<option value="${i}" ${i===current?'selected':''}>${i+1}. ${esc(c.name || '(no name)')}</option>`).join('')
+    : '<option>Sample data</option>';
+}
+function setCurrent(i, keepFocus){
+  current = i;
+  document.querySelectorAll('#custTable tbody tr').forEach(tr => { const on = +tr.dataset.i === i; tr.classList.toggle('cur', on); tr.querySelector('input[type=radio]').checked = on; });
+  renderCurSel(); drawMarkers();
+}
+function refreshAll(){ renderCustomers(); renderPlaceKey(); renderPlist(); renderAcro(); drawMarkers(); }
+
+function fixIC(v){ const s = String(v ?? '').trim(); return /^\d{11}$/.test(s) ? '0'+s : s; } // Excel drops the leading zero for 2000s births
+function importRows(rows){
+  let added = 0;
+  for (const r of rows){
+    const o = {};
+    for (const [h,v] of Object.entries(r)){
+      if (!String(h).trim() || /^__empty/i.test(h)) continue;
+      const k = mapHeader(h);
+      if (!BASE_COLS.some(c=>c.key===k) && !state.extraCols.includes(k) && !DERIVED.some(c=>c.key===k)) state.extraCols.push(k);
+      o[k] = k === 'ic' ? fixIC(v) : String(v ?? '').trim();
+    }
+    if (Object.values(o).some(v => v)) { customers.push(o); added++; }
+  }
+  return added;
+}
+
+$('addBtn').onclick = () => {
+  const c = {name:$('addName').value.trim(), ic:$('addIc').value.trim(), policy_no:$('addPol').value.trim()};
+  if (!c.name && !c.ic && !c.policy_no) return;
+  customers.push(c); current = customers.length-1;
+  ['addName','addIc','addPol'].forEach(id => $(id).value = '');
+  saveCustomers(); refreshAll(); $('addName').focus();
+};
+['addName','addIc','addPol'].forEach(id => $(id).addEventListener('keydown', e => { if (e.key === 'Enter') $('addBtn').click(); }));
+
+$('bulkIn').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  try {
+    const wb = XLSX.read(await f.arrayBuffer(), {type:'array'});
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const n = importRows(XLSX.utils.sheet_to_json(ws, {defval:'', raw:false}));
+    saveTemplate(); saveCustomers(); refreshAll();
+    status(`Imported ${n} customer${n===1?'':'s'} from ${f.name}.`);
+  } catch(err){ status('Could not read that file: ' + err.message, true); }
+};
+$('tplBtn').onclick = () => download(new Blob(['Name,IC No,Policy No\n'], {type:'text/csv'}), 'customers-template.csv');
+$('clearBtn').onclick = () => { if (!customers.length || !confirm(`Remove all ${customers.length} customers from this list?`)) return; customers = []; current = 0; saveCustomers(); refreshAll(); };
+$('remember').onchange = () => { lsSet(LS_R, $('remember').checked ? '1' : null); saveCustomers(); };
+$('curSel').onchange = e => { if (customers.length) setCurrent(+e.target.value); };
+
+// ---------- fill & export ----------
+function safeText(font, s){ let out=''; for (const ch of s){ try { font.encodeText(ch); out += ch; } catch(e){} } return out; }
+async function fillOne(c){
+  const doc = await PDFLib.PDFDocument.load(pdfBytes, {ignoreEncryption:true});
+  const font = await doc.embedFont(PDFLib.StandardFonts.Helvetica);
+  if (acroFields.length){
+    const form = doc.getForm();
+    for (const [fname, key] of Object.entries(state.acroMap)){
+      if (!key) continue;
+      try {
+        const f = form.getField(fname), v = val(c, key);
+        if (f instanceof PDFLib.PDFTextField) f.setText(safeText(font, v));
+        else if (f instanceof PDFLib.PDFCheckBox) (v && !/^(0|no|n|false)$/i.test(v)) ? f.check() : f.uncheck();
+      } catch(e){}
+    }
+    try { form.updateFieldAppearances(font); } catch(e){}
+    if (state.flatten) { try { form.flatten(); } catch(e){} }
+  }
+  const pages = doc.getPages();
+  for (const p of state.placements){
+    const page = pages[p.page-1]; if (!page) continue;
+    const text = safeText(font, val(c, p.key)); if (!text) continue;
+    const color = PDFLib.rgb(0,0,0);
+    if (p.pitch > 0) [...text].forEach((ch,i) => page.drawText(ch, {x: p.x + i*p.pitch + (p.pitch - font.widthOfTextAtSize(ch,p.size))/2, y: p.y, size: p.size, font, color}));
+    else page.drawText(text, {x: p.x, y: p.y, size: p.size, font, color});
+  }
+  return doc.save();
+}
+function fileNameFor(c, i){
+  const part = s => String(s||'').trim().replace(/[\\/:*?"<>|]+/g,'').replace(/\s+/g,'_');
+  const base = [part(c.policy_no), part(c.name)].filter(Boolean).join('_') || `customer_${i+1}`;
+  return `${base}.pdf`;
+}
+function download(blob, name){ const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }
+function ready(){
+  if (!pdfBytes){ status('Load the blank form first (step 1).', true); return false; }
+  if (!state.placements.length && !Object.values(state.acroMap).some(Boolean)){ status('Place at least one field on the form first (step 3).', true); return false; }
+  return true;
+}
+const formBase = () => (state.fileName || 'form').replace(/\.pdf$/i,'');
+async function busy(btn, fn){ const t = btn.textContent; btn.disabled = true; btn.textContent = 'Working…'; try { await fn(); } catch(e){ status('Export failed: ' + e.message, true); } finally { btn.disabled = false; btn.textContent = t; } }
+
+$('expOne').onclick = e => { if (!ready()) return; busy(e.target, async () => {
+  const c = previewCustomer(); download(new Blob([await fillOne(c)], {type:'application/pdf'}), customers.length ? fileNameFor(c, current) : 'sample-filled.pdf');
+  status('Filled PDF downloaded.');
+}); };
+$('expMerged').onclick = e => { if (!ready()) return; if (!customers.length) return status('Add customers first (step 2).', true); busy(e.target, async () => {
+  const out = await PDFLib.PDFDocument.create();
+  for (let i=0;i<customers.length;i++){
+    status(`Filling ${i+1} of ${customers.length}…`);
+    const d = await PDFLib.PDFDocument.load(await fillOne(customers[i]));
+    (await out.copyPages(d, d.getPageIndices())).forEach(pg => out.addPage(pg));
+  }
+  download(new Blob([await out.save()], {type:'application/pdf'}), `${formBase()}_all_${customers.length}.pdf`);
+  status(`Combined PDF for ${customers.length} customers downloaded.`);
+}); };
+$('expZip').onclick = e => { if (!ready()) return; if (!customers.length) return status('Add customers first (step 2).', true); busy(e.target, async () => {
+  const zip = new JSZip(), used = {};
+  for (let i=0;i<customers.length;i++){
+    status(`Filling ${i+1} of ${customers.length}…`);
+    let n = fileNameFor(customers[i], i); if (used[n]) n = n.replace(/\.pdf$/, `_${i+1}.pdf`); used[n] = 1;
+    zip.file(n, await fillOne(customers[i]));
+  }
+  download(await zip.generateAsync({type:'blob'}), `${formBase()}_filled.zip`);
+  status(`ZIP with ${customers.length} filled PDFs downloaded.`);
+}); };
+
+// ---------- controls ----------
+$('pdfIn').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  try { await loadTemplate(new Uint8Array(await f.arrayBuffer()), f.name); status(`Loaded ${f.name}.`); }
+  catch(err){ status('Could not open that PDF: ' + err.message, true); }
+};
+$('placeBtn').onclick = () => {
+  if (!pdfJsDoc) return status('Load the blank form first (step 1).', true);
+  armed = armed ? null : $('placeKey').value;
+  $('placeBtn').textContent = armed ? 'Click on the form… (Esc to cancel)' : 'Place on form';
+  drawMarkers();
+};
+$('prevPg').onclick = () => { if (pdfJsDoc && pageNum > 1){ pageNum--; renderPage(); } };
+$('nextPg').onclick = () => { if (pdfJsDoc && pageNum < pdfJsDoc.numPages){ pageNum++; renderPage(); } };
+$('upper').onchange = () => { state.upper = $('upper').checked; saveTemplate(); drawMarkers(); };
+$('icFmt').onchange = () => { state.icFmt = $('icFmt').value; saveTemplate(); drawMarkers(); };
+$('flatten').onchange = () => { state.flatten = $('flatten').checked; saveTemplate(); };
+$('cfgOut').onclick = () => {
+  if (!state.pdfB64) return status('Load the blank form first.', true);
+  download(new Blob([JSON.stringify(state)], {type:'application/json'}), `${formBase()}_setup.json`);
+};
+$('cfgIn').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  try {
+    const s = JSON.parse(await f.text());
+    state = Object.assign({placements:[], acroMap:{}, flatten:true, upper:true, icFmt:'asis', extraCols:[]}, s);
+    applyOptions(); refreshAll();
+    if (state.pdfB64) await loadTemplate(fromB64(state.pdfB64), state.fileName);
+    status('Setup loaded.');
+  } catch(err){ status('That setup file could not be read.', true); }
+};
+function applyOptions(){ $('upper').checked = state.upper; $('icFmt').value = state.icFmt; $('flatten').checked = state.flatten; }
+let rz; window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(renderPage, 150); });
+
+// ---------- boot ----------
+(async function boot(){
+  try { const s = JSON.parse(lsGet(LS_T) || 'null'); if (s) state = Object.assign(state, s); } catch(e){}
+  $('remember').checked = lsGet(LS_R) === '1';
+  if ($('remember').checked){ try { customers = JSON.parse(lsGet(LS_C) || '[]'); } catch(e){ customers = []; } }
+  applyOptions(); refreshAll();
+  if (state.pdfB64){ try { await loadTemplate(fromB64(state.pdfB64), state.fileName); } catch(e){ status('The saved form could not be reopened. Please load it again.', true); } }
+})();
+</script>
+<script>if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));</script>
+</body>
+</html>
